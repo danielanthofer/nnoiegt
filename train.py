@@ -362,8 +362,9 @@ with tf.name_scope('train') as scope:
 
 
 #### summarizers ####
-    correct_prediction = tf.equal(y, tf.argmax( ff_layer, axis=2, output_type=tf.int32))
-    not_empty_words = tf.not_equal(y, empty_const)
+    prediction = tf.argmax( ff_layer, axis=2, output_type=tf.int32)
+    correct_prediction = tf.equal(y, prediction)
+    not_empty_words = tf.not_equal(prediction, empty_const)
     # remove empty words from correct prediction
     correct_prediction = tf.equal(not_empty_words, correct_prediction)
     correct_prediction_count = tf.reduce_sum(tf.cast(correct_prediction, tf.float32))
@@ -501,7 +502,8 @@ if mode == "train":
       w_a_total = 0
       loss_l = []
       validation_batches = len(X_validate)/batch_size
-      for i in range(validation_batches):
+      #for i in range(validation_batches):
+      if False:
         sys.stdout.write("\rINFO: epoch: " + str(i_epoch) + ", validation batch: " + str(i) + "............")
         sys.stdout.flush()
         batch = generate_batch(X_validate, Y_validate, batch_size, i*batch_size, number_of_words_per_DG_node)
@@ -525,16 +527,32 @@ if mode == "train":
 
       ### test ###
       w_a_correct = 0
+      w_a_correct_soft = 0
       w_a_total = 0
       loss_l = []
       for i in range(test_batches):
         sys.stdout.write("\rINFO: epoch: " + str(i_epoch) + ", test batch: " + str(i) + "............")
         sys.stdout.flush()
         batch = generate_batch(X_test, Y_test, batch_size, i*batch_size, number_of_words_per_DG_node)
-        w_a_correct_, w_a_total_,l = session.run([word_precision_correct_words, word_precision_total_words, loss], feed_dict={x: batch[0], y: batch[1], decoder_input_ground_truth: batch[1], dropout_output_keep_prob: 1, feed_prediction_prob: [1]})
+        output_indices,w_a_correct_, w_a_total_,l = session.run([extraction_word_indices, word_precision_correct_words, word_precision_total_words, loss], feed_dict={x: batch[0], y: batch[1], decoder_input_ground_truth: batch[1], dropout_output_keep_prob: 1, feed_prediction_prob: [1]})
         loss_l.append(l)
         w_a_correct += w_a_correct_
         w_a_total += w_a_total_
+
+        # calculate soft (bag of words) precision
+        # note for output_indices and batch: 1.dim: sequence, 2.dim: batch, see also *time_major*
+          # convert, so that each list in output_indices is one output sequence
+        output_indices = [ [ int(w[i]) for w in output_indices] for i in range(batch_size)]
+        target_indices = [ [ int(w[i]) for w in batch[1]      ] for i in range(batch_size)]
+        for i in range(batch_size):
+          while len(output_indices[i])>0 and  len(target_indices[i]) > 0:
+            w = output_indices[i][0]
+            output_indices[i].remove(w)
+            if w != 0:
+              if w in target_indices[i]:
+                target_indices[i].remove(w)
+                w_a_correct_soft += 1
+
 
       test_word_precision=float(w_a_correct)/float(w_a_total)
       summary = tf.Summary(value=[
@@ -547,11 +565,13 @@ if mode == "train":
         ])
       writer.add_summary(summary, i_epoch)
 
+      test_soft_word_precision = float(w_a_correct_soft)/w_a_total
       sys.stdout.write("\rINFO: epoch: " + str(i_epoch) + "                                         " \
                           "\n\tvalidation loss: " + str(validation_loss) + \
                           "\n\tvalidation word precision: " + str(validation_word_precision) + \
                           "\n\ttest loss: " + str(test_loss) + \
-                          "\n\ttest word precision:" + str(test_word_precision) + "\n")
+                          "\n\ttest word precision:" + str(test_word_precision) +  \
+                          "\n\ttest soft word precision:" + str(test_soft_word_precision) + "\n")
       sys.stdout.flush()
 
       ### stop/save ###
