@@ -54,3 +54,8 @@ Generate embeddings and training data with IPython notebooks (adapt the settings
 3. *formatEmbeddingsAndTrainingData* 
 
 To recreate word precision and soft precision evaluation result, start training and wait for output "test word precision".
+
+License
+-------
+
+MIT license
